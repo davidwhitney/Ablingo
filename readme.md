@@ -1,16 +1,260 @@
 # Realtime Bingo - Ablingo!
 
-## Intro
+Ablingo is a peer-to-peer bingo app, that runs in your browser tabs, powered by `Ably.io`. It uses `Ably Realtime Channels` to connect between clients.
+It's written in Vue.js, runs locally, and in this example, is hosted on `Azure Static Web Apps`.
 
-This is a demo of using the Ably promise-based SDK in an `Azure Static Web App`.
+## Contents
 
-It uses Token Authentication with a Token Request created by an Azure function managed by Azure static web apps and handed to the Ably-Realtime client to authenticate and keep your API key safe.
+* [The rules of bingo](#the-rules-of-bingo)
+  + [The bingo card](#the-bingo-card)
+  + [Playing the game](#playing-the-game)
+  + [Prize winning combinations](#prize-winning-combinations)
+* [How our peer to peer game works](#how-our-peer-to-peer-game-works)
+  + [Default message contents](#default-message-contents)
+  + [Direct messages](#direct-messages)
+  + [The Host](#the-host)
+* [The bingo messages](#the-bingo-messages)
+* [The message flow](#the-message-flow)
+* [A note on security](#a-note-on-security)
+* [The basics of a Vue app](#the-basics-of-a-vue-app)
+* [The app](#the-app)
+* [Web Speech API](#web-speech-api)
+* [Set up a free account with Ably](#set-up-a-free-account-with-ably)
+* [Running on your machine](#running-on-your-machine)
+  + [Local dev pre-requirements](#local-dev-pre-requirements)
+  + [How to run for local dev](#how-to-run-for-local-dev)
+* [Hosting on Azure](#hosting-on-azure)
 
-For the purposes of the demo, we request some TFL Tube Data and display the history.
+## The rules of bingo
 
-Because we're using the Promises API, we can use async/await in our JavaScript code that runs in the browser.
+### The bingo card
 
-## Local dev pre-requirements
+There are six bingo tickets per card. Our bingo tickets contain 27 spaces, arranged in 9 columns and 3 rows. Each row contains 5 numbers and four blank spaces. Each column on the card can contain the numbers from it's own base ten (for example column 0 can contain 1-9, column 1 can contain 10-19, column 2 can contain 2-29 etc). All of the numbers between 1 and 90 will appear across the six tickets, meaning that the player will mark a number every time one is called.
+
+### Playing the game
+
+The game is progressed by the caller (who is in this case automatic). The caller will call numbers as they are randomly selected. As each number is called, players check to see where it appears on their tickets. If found, they mark it off by clicking the square containing the number. When all of the numbers required to win a prize have been marked off then the player clicks the 'Bingo' button and the game will check whether they have checked off their numbers correctly and whether or not they are the first player to claim that prize. If they are a winner their player name will be added to the list of prize winners.
+
+### Prize winning combinations
+
+* Single Line – covering a horizontal line of five numbers on the ticket.
+* Two Lines – covering any two lines on the same ticket.
+* Full House – covering all fifteen numbers on the ticket
+
+## How our peer to peer game works
+
+We're using `Ably Channels` to provide a peer-to-peer messaging capability to our Bingo game.
+
+We've split our code into two JavaScript classes:
+
+* `BingoClient` found in `bingo.lib.client.js`
+
+* `BingoServer` found in `bingo.lib.server.js`
+
+Both of these classes use logic found in `bingo.js` - where all our code capturing bingo game rules, calling, and scoring lives.
+
+Our UI generates a random `GameId` from a list of random animal names (from `dictionaries.js`) stitching together combinations of three names with hyphens. This `GameId` is used as our `Ably Channel Name` - so when different browsers connect to this (hopefully! mostly!) unique `Channel Name`, messages can be sent between participants in the game.
+
+We also use the animal list to auto-generate player names, because they're funny.
+
+The game begins with **one player electing themselves host** by clicking the host button in the UI. Our app then creates an instance of our `BingoServer` class in that players browser - where it's stored as part of our `Vue.js` data (more on that later).
+
+All the games players have an instance of our `BingoClient` class created and put in Vue data too - including the `Host` - as they're also a player in the game.
+
+Either when a host starts hosting, or a player joins the game, a connection to `Ably` is opened, and all `players` are subscribed to the uniquely named channel. The bingo game then plays out through a series of messages sent from the `Host` to all the `Players` (including themselves!) on a `tick` timer.
+
+All the code in `bingo.js` is used by the `Host` to run the logic of the bingo game, with our `BingoCaller` class selecting a new numbers as we play.
+
+This "one player is the host" pattern is the same way peer to peer games work everywhere, but instead of directly establishing connections between all our players, we're using `Ably Channels` to make the networking part of our games much easier.
+
+### Default message contents
+
+Messages from the host always contain a property called `serverState`, which the `clients` use to stay in sync.
+
+Messages are all sent multicast (to and from everyone subscribed to the channel at the same time)
+
+The server looks like this:
+
+```js
+this.state = {
+    settings: { server: identity, gameId: gameId, automark: false },
+    status: "not-started",
+    players: [],
+    prizes: this.defaultPrizesObject()
+};
+
+defaultPrizesObject() { return { "one-line": null, "two-line": null, "full-house": null } };
+```
+
+### Direct messages
+
+While all messages are multicast - by convention, if a clientId is provided to the function `sendMessage` on our `PubSubClient` class, an extra property will be added to let `client` instances to either process or ignore this message.
+
+```js
+sendMessage({ kind: "some-message", serverState: this.state }, message.metadata.clientId);
+```
+
+Please remember that this **is not secure** and all clients will still receive messages destined for each player, but our `BingoClient` knows to filter out these messages from other clients, so they don't process them.
+
+This filter exists in `index.js` when we connect to our `Ably Channel` and looks like this:
+
+```js
+function shouldHandleMessage(message, metadata) {  
+    return !message.forClientId || (message.forClientId && message.forClientId === metadata.clientId); 
+}
+
+function handleMessagefromAbly(message, metadata, gameClient, gameServer) {
+  if (shouldHandleMessage(message, metadata)) {
+    gameServer?.onReceiveMessage(message);  
+    gameClient?.onReceiveMessage(message);
+  } 
+}
+```
+
+We check if the property `forClientId` is in the received message, and if it is, only process the message if it's for that `client`.
+We use this feature to issue bingo cards and acknowledge players joining a game.
+
+### The Host
+
+The `host` computer runs the logic of the game, and gets provided extra options in the UI than a regular `player`
+
+## The bingo messages
+
+Because this is peer to peer, we send a lot of messages between the player that is hosting, and all the other players.
+
+| Message                   | State Change                    | Notes                              |
+| :------------------------ | :------------------------------ | :--------------------------------- |
+| connected                 | Client connects to game         | Sent **from** client               |
+| connection-acknowledged   | Client connects to game         | Sent to specific client            |
+| new-game                  | Host starts game                | All clients clear state            |
+| host-offer                | Host starts hosting on channel  |                                    |
+| host-reject               | Existing host rejects new one   | Prevents two hosts in same channel |
+| game-info                 | Start of game, client connected |                                    |
+| bingo-card-issued         | Pre-game-start                  | Sent to specific client            |
+| bingo-caller-message      | Every game tick on the host     |                                    |
+| bingo                     | When client clicks bingo        | Sent from a client                 |
+| prize-awarded             | When a new award is made        |                                    |
+| game-complete             | End of game                     |                                    |
+
+## The message flow
+
+The message flow orchestrates the game of bingo between the `Host Player` and all the `Clients`.
+The UI, and game scoring, is determined by which messages are sent and received by the `Players`.
+
+* A host sends out a host-offer message when they start hosting, likely nobody is listening.
+* A client joins a session and sends a `connected` message
+* The host sends a `connection-acknowledged` message to that specific client
+* `Host Player` clicks `start` and `new-game` message is sent wiping any clients connected state
+* `Host` sends all connected clients a `bingo-card-issued` with their numbers
+* `Host` sends `game-info` message to make sure clients are all in sync.
+
+* Game ticks forward and a `bingo-caller-message` is sent for each number.
+* `Player` clicks `bingo` and a `bingo` message is sent, along with the number they *claim* to have seen.
+* `Host` marks the `bingo` request, and if it satisfies a prize rule, a `prize-awarded` message is sent.
+
+* Once a full-house is called, or all the possible numbers have been called, a `game-complete` message is sent.
+
+Once the game is complete, the host can start a new game, with the same players, on the same GameId, by clicking `start` again.
+
+## A note on security
+
+Because this game works peer to peer, in theory, a player could join the channel and start sending host messages.
+In a more mission critical setup, you would either sign the messages, or verify the host on message receipt. Please don't use this sample, if you're building systems that need to be tamper-proof.
+
+## The basics of a Vue app
+
+> Vue (pronounced /vjuː/, like view) is a progressive framework for building user interfaces. It is designed from the ground up to be incrementally adoptable, and can easily scale between a library and a framework depending on different use cases. It consists of an approachable core library that focuses on the view layer only, and an ecosystem of supporting libraries that helps you tackle complexity in large Single-Page Applications. 
+> <cite>-- [vue.js Github repo](https://github.com/vuejs/vue)</cite>
+
+Vue is a quick-to-start-with single-page-app framework, and we've used it to build our UI. Our Vue code lives in `index.js` - and handles all of our user interactions.
+
+Our Vue app looks a little like this abridged sample:
+
+```js
+var app = new Vue({
+  el: '#app',
+  data: {
+    gameClient: null
+    ...
+  },
+  watch: {
+    soundEnabled: function (val) { this.gameClient.soundEnabled = val; },
+    bingoAvailable: function (val) { this.bingoAvailable = val; }
+  },
+  computed: {
+    state: function() { return this.gameClient?.state; },
+    ...
+  },
+  methods: {
+    startGame: function(evt) { ... },
+    hostGame: async function(evt) { ... },
+  }
+});
+```
+
+If finds an element with the ID `app` in our markup, and treats any elements inside of it as markup that can contain `Vue Directives` - extra attributes to bind data and manipulate our HTML based on our applications state.
+
+Typically, the Vue app makes data available (such as `gameClient` in the above code snippet), and when that data changes, it'll re-render the parts of the UI that are bound to it. We also make use of `watch` (for handling user input) and `computed` data properties in the above sample.
+
+Vue also exposes a `method` property, where we implement things like click handlers, and callbacks from our UI.
+
+This snippet from our Game Over screen markup, should help illustrate how Vue if-statements and markup works
+
+```html
+<div v-if="gameComplete" class="game-info game-finished">
+<h1>Game Finished!</h1>
+<p>Winner: {{ state?.winner?.friendlyName }}</p>
+<p class="reason">Reason: {{ state?.gameStateReason }}</p>
+<h2 class="play-again" v-if="youAreHost">Play again?</h2>
+</div>
+```
+
+Here you'll see Vue's `v-if` directive, which means that this `div` will only display if the `gameComplete` `data` property is true.
+You can also see Vue's binding syntax, where we use `{{ state?.winner?.friendlyName }}` to bind some data to our UI.
+
+Vue is simple to get started with, especially with a small app like this, with easy to understand data-binding syntax.
+
+## The app
+
+Our UI is a Vue.js single page app.
+It's split into three sections
+
+* The Lobby
+* The Bingo Game
+* The Game Over screen
+
+We use Vue `v-if` directives to switch between which UI elements are shown based on the `gameState`.
+
+Our `gameState` reflects if we are connected to a currently hosted game, hosting a game ourselves, or disconnected.
+
+Our app shows a list of connect players, some additional host controls for the host allowing them to start the game (with a few other options), and random generates player names and game names for people to enjoy.
+
+The app also supports "deep linking" where you can send `invite only` links to your friends, which will hide the `Host` button, to make it easier for them to get straight into the game of Ablingo.
+
+## Web Speech API
+
+The game also supports the [Web Speech API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Speech_API) - which will vocalise the bingo calls from our game when messages from the `host` are received.
+
+It's a bit of silly fun, and there's a checkbox to disable it in case it gets a little... too... annoying ;)
+
+## Set up a free account with Ably
+
+In order to run this app, you will need an Ably API key. If you are not already signed up, you can [sign up now for a free Ably account](https://www.ably.io/signup). Once you have an Ably account:
+
+* Log into your app dashboard
+* Under **“Your apps”**, click on **“Manage app”** for any app you wish to use for this tutorial, or create a new one with the “Create New App” button
+* Click on the **“API Keys”** tab
+* Copy the secret **“API Key”** value from your Root key, we will use this later when we set up our dev environment.
+
+## Running on your machine
+
+While this whole application runs inside a browser, to host it anywhere people can use, we need some kind of backend to keep our `Ably API key` safe. The running version of this app is hosted on `Azure Static Web Apps (preview)` and provides us a `serverless` function that we can use to implement Ably `Token Authentication`.
+
+The short version is - we need to keep the `Ably API key` on the server side, so people can't grab it and use up your usage quota. The client side SDK knows how to request a temporary key from an API call, we just need something to host it. In the `api` directory, there's code for an `Azure Functions` API that implements this `Token Authentication` behaviour.
+
+`Azure Static Web Apps` automatically hosts this API for us, because there are a few .json files in the right places that it's looking for and understands. To have this same experience locally, we'll need to use the `Azure Functions Core Tools`.
+
+### Local dev pre-requirements
 
 We'll use live-server to serve our static files and Azure functions for interactivity
 
@@ -29,9 +273,9 @@ func settings add ABLY_API_KEY Your-Ably-Api-Key
 Running this command will encrypt your API key into the file `/api/local.settings.json`.
 You don't need to check it in to source control, and even if you do, it won't be usable on another machine.
 
-## How to run for local dev
+### How to run for local dev
 
-Run the static web app:
+Run the bingo app:
 
 ```bash
 npx live-server --proxy=/api:http://127.0.0.1:7071/api
@@ -44,135 +288,6 @@ cd api
 npm run start
 ```
 
-## How to run on Azure
+## Hosting on Azure
 
-* Push this repository to GitHub
-* Create a new Azure Static Web App
-* Link it to your GitHub repository
-* Azure will add a build task to your repository and deploy the app
-
-You'll need to add your API key into a a Configuration setting in the Azure management portal.
-
-Click:
-
-* Click Configuration
-* Add a setting named ABLY_API_KEY with your API key as the value
-* Save the settings.
-
-## How it works
-
-Azure static web apps don't run traditional "server side code", but if you include a directory with some Azure functions in your application, Azures deployment engine will automatically create and manage Azure functions for you, that you can call from your static application.
-
-For local development, we'll just use the Azure functions SDK to replicate this, but for production, we can use static files (or files created by a static site generator of your choice) and Azure will serve them for us.
-
-### In the Azure function
-
-We have a folder called API which contains an Azure functions JavaScript API. There's a bunch of files created by default (package.json, host.json etc) that you don't really need to worry about, and are created by the Functions SDK. If you wanted to expand the API, you would use npm install and the package.json file to manage dependencies for any addtional functions.
-
-There's a directory `api/createTokenRequest` - this is where all our "server side" code lives.
-
-Inside it, there are two files - `index.js` and `function.json`. The function.json file is the Functions binding code that the Azure portal uses for configuration, it's generated by the SDK and you don't need to pay attention to it. Our Ably code is inside the `index.js` file.
-
-```js
-const Ably = require('ably/promises');
-
-module.exports = async function (context, req) {
-    const client = new Ably.Realtime(process.env.ABLY_API_KEY);
-    const tokenRequestData = await client.auth.createTokenRequest({ clientId: 'ably-azure-static-site-demo' });    
-    context.res = { 
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(tokenRequestData) 
-    };
-};
-```
-
-This is all of our server side code. We're using the Ably JavaScript SDK, and exporting a default async function.
-The `function.json` file configures this to be our entrypoint, and the functions runtime.
-By default, configures this API to be available on `https://azure-url/api/createTokenRequest`
-
-Using the `client` we created earlier, we create a token request.
-
-The `TokenRequest` that is generated by this SDK call happens without calling the Ably servers, and allows the client side SDK to authenticate
-because the `TokenRequest` is signed with your API key on the server before it's sent to Ably.
-
-The `permissions` applied to the temporary token Ably returns to your client are **inherited** from your API key, and configured in your Ably dashboard.
-
-
-### On the client side
-
-For our UI, we have a single file in `index.html`.
-
-There are a few things going on here, firstly, in the `<head>` we include the Ably SDK in a script tag from the Ably CDN.
-
-```html
-<script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
-```
-
-In the `<body>` of the document, we create a `<div>` to put Ably responses into
-
-```html
-<main>
-  <h2>Oh hi, let me just grab some history from Ably!</h2>
-  <div id="history" class="historyContainer"></div>
-</main>
-```
-
-And finally, a `<script>` block to connect to, and use, the Ably API.
-
-```js
-<script>
-    (async function () {
-
-    const resultsDiv = document.getElementById("history");
-    const ably = new Ably.Realtime.Promise({ authUrl: '/api/createTokenRequest' });
-    const channelId = `[product:ably-tfl/tube]tube:northern:940GZZLUEUS:arrivals`;
-    const channel = await ably.channels.get(channelId);
-    await channel.attach();
-
-    channel.subscribe(function(message) {
-        console.log(message.data);
-    });
-    console.log("Subscribed to ably");
-
-    const resultPage = await channel.history({ untilAttach: true, limit: 1 }); 
-
-    for (const item of resultPage.items) {
-        const result = document.createElement("div");
-        result.classList.add("item");
-        result.innerHTML = JSON.stringify(item);
-        resultsDiv.appendChild(result);
-    }
-
-    })();
-</script>  
-```
-
-This script block
-
-* Wraps our code in an async function so we can use async/await
-* Finds our div with the id `history`.
-
-The body of the connect function is an example of using Ably to query TFL for northern line journies to Kings Cross, but for this particular example
-it's important to look at the line
-
-```js
-const ably = new Ably.Realtime.Promise({ authUrl: '/api/createTokenRequest' });
-```
-
-Here we configure our Ably SDK to 
-
-* Use the `Promise` client (which supports async/await)
-
-* Pass a configuration object with an `authUrl`.
-
-When the client is created, it'll Azure function `createTokenRequest`, and round-trip to Ably
-to get a short-lived authentication token for subsequent API calls, renewing it's token as required automatically.
-
-## Conclusion
-
-Azure Static Web Apps are a pretty cool and cheap way to host content on the internet.
-They're more or less configuration-less, intergrate well with GitHub actions, and allow you to add bits of server-side code without the cost of running a webserver.
-
-In this example, we've looked at how we can use the "serverless" Azure functions, embedded in our static app, to protect our sensitive API key, while still allowing it to be used on the client side with little to no ceremony.
-
-You could use this similar approach with any other secrets you want to make use of in the front-end.
+We're hosting this as a Azure Static Web Apps - and the deployment information is in [hosting.md](hosting.md).

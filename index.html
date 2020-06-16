@@ -48,19 +48,19 @@
             <input class="sound-check" type="checkbox" name="soundEnabled" v-model="soundEnabled">
           </label>        
         </div>
-
-        <ul class="prizes">
-          <li class="prize">                
-            <span>One Line Prize: {{ transmittedServerState?.prizes["one-line"]?.friendlyName }}</span>
-          </li>
-          <li class="prize">                
-            <span>Two Line Prize: {{ transmittedServerState?.prizes["two-line"]?.friendlyName}}</span>
-          </li>
-          <li class="prize">                
-            <span>Full House Prize: {{ transmittedServerState?.prizes["full-house"]?.friendlyName }}</span>
-          </li>
-        </ul>        
-
+        <div class="game-info">
+          <ul class="prizes">
+            <li class="prize">                
+              <span>One Line Prize: {{ transmittedServerState?.prizes["one-line"]?.friendlyName }}</span>
+            </li>
+            <li class="prize">                
+              <span>Two Line Prize: {{ transmittedServerState?.prizes["two-line"]?.friendlyName}}</span>
+            </li>
+            <li class="prize">                
+              <span>Full House Prize: {{ transmittedServerState?.prizes["full-house"]?.friendlyName }}</span>
+            </li>
+          </ul>        
+        </div>
       </div>
       <!-- /Bingo game -->
 

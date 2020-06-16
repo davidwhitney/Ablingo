@@ -1,7 +1,7 @@
 # Realtime Bingo - Ablingo!
 
-Ablingo is a peer-to-peer bingo app, that runs in your browser tabs, powered by `Ably.io`. It uses `Ably Realtime Channels` to connect between clients.
-It's written in Vue.js, runs locally, and in this example, is hosted on `Azure Static Web Apps`.
+Ablingo is a peer-to-peer bingo app, that runs in your browser tabs, powered by [Ably.io](https://www.ably.io/). It uses [Ably Realtime Channels](https://www.ably.io/documentation/realtime/channels) to connect between clients.
+It's written in [Vue.js](https://vuejs.org/), runs locally, and in this example, is hosted on [Azure Static Web Apps](https://azure.microsoft.com/en-gb/services/app-service/static/).
 
 ## Contents
 

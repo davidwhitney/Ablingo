@@ -231,19 +231,22 @@ button:hover {
   background-color: grey;
 }
 
-.players {
+.players,
+.prizes {
     margin: 10px 0 40px;
     padding: 0;
     border: 1px solid #ccc;
     border-radius: 4px;
 }
 
-.player {
+.player, 
+.prize {
   list-style: none;
   padding: 10px;
 }
 
-.player:nth-child(even) {
+.player:nth-child(even), 
+.prize:nth-child(even) {
   background-color: #f1f1f1;
 }
 

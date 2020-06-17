@@ -209,11 +209,13 @@ button:hover {
   font-size: 1em;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .setting-interval {
   height: 24px;
   margin: auto 10px;
+  max-width: 60px;
 }
 
 .setting-sound {

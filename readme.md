@@ -65,7 +65,7 @@ When either a host starts hosting, or a player joins the game, a connection to `
 
 All the code in [bingo.js](bingo.js) is used by the `Host` to run the logic of the bingo game, with our `BingoCaller` class selecting a new numbers as we play.
 
-This "one player is the host" pattern is the same way peer to peer games work everywhere, but instead of directly establishing connections between all our players, we're using [Ably Channels`](https://www.ably.io/channels) to make the networking part of our games much easier.
+This "one player is the host" pattern is the same way peer to peer games work everywhere, but instead of directly establishing connections between all our players, we're using [Ably Channels](https://www.ably.io/channels) to make the networking part of our games much easier.
 
 ### Default message contents
 

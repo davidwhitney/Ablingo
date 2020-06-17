@@ -21,7 +21,7 @@ It's written in [Vue.js](https://vuejs.org/), runs locally, and in this example,
 * [Web Speech API](#web-speech-api)
 * [Set up a free account with Ably](#set-up-a-free-account-with-ably)
 * [Running on your machine](#running-on-your-machine)
-  + [Local dev pre-requirements](#local-dev-pre-requirements)
+  + [Local dev pre-requirements](#locl-dev-pre-requirements)
   + [How to run for local dev](#how-to-run-for-local-dev)
 * [Hosting on Azure](#hosting-on-azure)
 
@@ -43,29 +43,29 @@ The game is progressed by the caller (who is in this case automatic). The caller
 
 ## How our peer to peer game works
 
-We're using `Ably Channels` to provide a peer-to-peer messaging capability to our Bingo game.
+We're using [Ably Channels](https://www.ably.io/channels) to provide a peer-to-peer messaging capability to our Bingo game.
 
 We've split our code into two JavaScript classes:
 
-* `BingoClient` found in `bingo.lib.client.js`
+* `BingoClient` found in [bingo.lib.client.js](bingo.lib.client.js)
 
-* `BingoServer` found in `bingo.lib.server.js`
+* `BingoServer` found in [bingo.lib.server.js](bingo.lib.server.js)
 
-Both of these classes use logic found in `bingo.js` - where all our code capturing bingo game rules, calling, and scoring lives.
+Both of these classes use logic found in [bingo.js](bingo.js) - where all our code capturing bingo game rules, calling, and scoring lives.
 
-Our UI generates a random `GameId` from a list of random animal names (from `dictionaries.js`) stitching together combinations of three names with hyphens. This `GameId` is used as our `Ably Channel Name` - so when different browsers connect to this (hopefully! mostly!) unique `Channel Name`, messages can be sent between participants in the game.
+The UI generates a random `GameId` from a list of random animal names (from `dictionaries.js`) stitching together combinations of three names with hyphens. This `GameId` is used as our `Ably Channel Name` - so when different browsers connect to this (probably!) unique `Channel Name`, messages can be sent between participants in the game.
 
-We also use the animal list to auto-generate player names, because they're funny.
+We also use the animal list to auto-generate player names, because they're fun.
 
-The game begins with **one player electing themselves host** by clicking the host button in the UI. Our app then creates an instance of our `BingoServer` class in that players browser - where it's stored as part of our `Vue.js` data (more on that later).
+The game begins with **one player electing themselves host** by clicking the host button in the UI. The app then creates an instance of our `BingoServer` class in that players browser - where it's stored as part of our `Vue.js` data (more on that later).
 
 All the games players have an instance of our `BingoClient` class created and put in Vue data too - including the `Host` - as they're also a player in the game.
 
-Either when a host starts hosting, or a player joins the game, a connection to `Ably` is opened, and all `players` are subscribed to the uniquely named channel. The bingo game then plays out through a series of messages sent from the `Host` to all the `Players` (including themselves!) on a `tick` timer.
+When either a host starts hosting, or a player joins the game, a connection to `Ably` is opened, and all `players` are subscribed to the uniquely named channel. The bingo game then plays out through a series of messages sent from the `Host` to all the `Players` (including themselves!) on a `tick` timer.
 
-All the code in `bingo.js` is used by the `Host` to run the logic of the bingo game, with our `BingoCaller` class selecting a new numbers as we play.
+All the code in [bingo.js](bingo.js) is used by the `Host` to run the logic of the bingo game, with our `BingoCaller` class selecting a new numbers as we play.
 
-This "one player is the host" pattern is the same way peer to peer games work everywhere, but instead of directly establishing connections between all our players, we're using `Ably Channels` to make the networking part of our games much easier.
+This "one player is the host" pattern is the same way peer to peer games work everywhere, but instead of directly establishing connections between all our players, we're using [Ably Channels`](https://www.ably.io/channels) to make the networking part of our games much easier.
 
 ### Default message contents
 
@@ -96,7 +96,7 @@ sendMessage({ kind: "some-message", serverState: this.state }, message.metadata.
 
 Please remember that this **is not secure** and all clients will still receive messages destined for each player, but our `BingoClient` knows to filter out these messages from other clients, so they don't process them.
 
-This filter exists in `index.js` when we connect to our `Ably Channel` and looks like this:
+This filter exists in [index.js](index.js) when we connect to our `Ably Channel` and looks like this:
 
 ```js
 function shouldHandleMessage(message, metadata) {  
@@ -111,7 +111,7 @@ function handleMessagefromAbly(message, metadata, gameClient, gameServer) {
 }
 ```
 
-We check if the property `forClientId` is in the received message, and if it is, only process the message if it's for that `client`.
+We check if the property `forClientId` is in the received message, and if it is, only process the message when it it for that `client`.
 We use this feature to issue bingo cards and acknowledge players joining a game.
 
 ### The Host
@@ -192,7 +192,7 @@ var app = new Vue({
 });
 ```
 
-If finds an element with the ID `app` in our markup, and treats any elements inside of it as markup that can contain `Vue Directives` - extra attributes to bind data and manipulate our HTML based on our applications state.
+It finds an element with the ID of `app` in our markup, and treats any elements inside of it as markup that can contain `Vue Directives` - extra attributes to bind data and manipulate our HTML based on our applications state.
 
 Typically, the Vue app makes data available (such as `gameClient` in the above code snippet), and when that data changes, it'll re-render the parts of the UI that are bound to it. We also make use of `watch` (for handling user input) and `computed` data properties in the above sample.
 
